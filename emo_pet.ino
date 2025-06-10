@@ -37,10 +37,20 @@ TFT_eSPI tft = TFT_eSPI(320, 240); // Kích thước TFT 2.4" ILI9341
 class DisplayAdapter {
 private:
   const int16_t OFFSET_X = 10;  // Padding bên trái 10px
+  uint16_t eyeColor = TFT_WHITE;  // Màu mắt mặc định
+  uint16_t bgColor = TFT_BLACK;   // Màu nền mặc định
   
 public:
+  void setEyeColor(uint16_t color) {
+    eyeColor = color;
+  }
+  
+  void setBgColor(uint16_t color) {
+    bgColor = color;
+  }
+  
   void clearDisplay() {
-    tft.fillScreen(TFT_BLACK);
+    tft.fillScreen(bgColor);
   }
   
   void display() {
@@ -48,35 +58,43 @@ public:
   }
   
   void drawPixel(int16_t x, int16_t y, uint16_t color) {
-    tft.drawPixel(x + OFFSET_X, y, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.drawPixel(x + OFFSET_X, y, actualColor);
   }
   
   void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    tft.fillRect(x + OFFSET_X, y, w, h, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.fillRect(x + OFFSET_X, y, w, h, actualColor);
   }
   
   void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    tft.drawRect(x + OFFSET_X, y, w, h, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.drawRect(x + OFFSET_X, y, w, h, actualColor);
   }
   
   void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-    tft.fillCircle(x + OFFSET_X, y, r, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.fillCircle(x + OFFSET_X, y, r, actualColor);
   }
   
   void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-    tft.drawCircle(x + OFFSET_X, y, r, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.drawCircle(x + OFFSET_X, y, r, actualColor);
   }
   
   void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-    tft.fillTriangle(x0 + OFFSET_X, y0, x1 + OFFSET_X, y1, x2 + OFFSET_X, y2, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.fillTriangle(x0 + OFFSET_X, y0, x1 + OFFSET_X, y1, x2 + OFFSET_X, y2, actualColor);
   }
   
   void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    tft.fillRoundRect(x + OFFSET_X, y, w, h, r, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.fillRoundRect(x + OFFSET_X, y, w, h, r, actualColor);
   }
   
   void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    tft.drawRoundRect(x + OFFSET_X, y, w, h, r, color);
+    uint16_t actualColor = (color == 1) ? eyeColor : bgColor;
+    tft.drawRoundRect(x + OFFSET_X, y, w, h, r, actualColor);
   }
   
   int16_t width() { return tft.width() - OFFSET_X; }  // Trừ đi padding để RoboEyes tính toán đúng
@@ -142,12 +160,8 @@ public:  EmotionalPet() {
   void begin() {    // Khởi tạo TFT
     tft.init();
     tft.setRotation(2); // Landscape
-    tft.fillScreen(TFT_CYAN); // Sáng hơn thay vì NAVY
-      // Khởi tạo RoboEyes
+    tft.fillScreen(TFT_CYAN); // Sáng hơn thay vì NAVY    // Khởi tạo RoboEyes
     roboEyes.begin(320, 240, 60); // 60 FPS max
-    
-    // Đặt màu mắt sáng hơn
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt màu trắng thay vì xanh tối
     
     // Cấu hình mặc định
     setNormalMode();
@@ -247,11 +261,9 @@ private:
     roboEyes.setHeight(50, 50);
     roboEyes.setBorderradius(12, 12);
     roboEyes.setSpacebetween(30);
-    roboEyes.setMood(DEFAULT);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(DEFAULT);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 3, 2);
     roboEyes.setIdleMode(OFF, 2, 2);
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng sáng
   }
     void setHappyMode() {
     backgroundColor = TFT_YELLOW;
@@ -264,11 +276,9 @@ private:
     roboEyes.setHeight(35, 35); // Mắt cười
     roboEyes.setBorderradius(20, 20);
     roboEyes.setSpacebetween(25);
-    roboEyes.setMood(HAPPY);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(HAPPY);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 1, 1); // Blink nhanh hơn
     roboEyes.setIdleMode(ON, 1, 1);
-    roboEyes.setEyeColor(TFT_BLACK);  // Mắt đen trên nền vàng
   }
     void setAngryMode() {
     backgroundColor = TFT_RED;
@@ -281,11 +291,9 @@ private:
     roboEyes.setHeight(30, 30); // Mắt nhỏ giận dữ
     roboEyes.setBorderradius(5, 5);
     roboEyes.setSpacebetween(40);
-    roboEyes.setMood(ANGRY);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(ANGRY);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 1, 0); // Blink nhanh đều
     roboEyes.setHFlicker(ON, 3); // Rung ngang
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền đỏ
   }
   void setSleepMode() {
     backgroundColor = TFT_DARKGREY;  // Sáng hơn thay vì BLACK
@@ -298,11 +306,9 @@ private:
     roboEyes.setHeight(8, 8); // Mắt nhắm
     roboEyes.setBorderradius(25, 25);
     roboEyes.setSpacebetween(30);
-    roboEyes.setMood(TIRED);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(TIRED);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(OFF); // Không blink khi ngủ
     roboEyes.setIdleMode(OFF);
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng sáng
   }
   void setSadMode() {
     backgroundColor = TFT_CYAN;       // Giữ cyan sáng
@@ -315,11 +321,9 @@ private:
     roboEyes.setHeight(70, 70); // Mắt to buồn
     roboEyes.setBorderradius(15, 15);
     roboEyes.setSpacebetween(35);
-    roboEyes.setMood(TIRED); // Dùng TIRED cho vẻ buồn
-    roboEyes.setPosition(S); // Nhìn xuống
+    roboEyes.setMood(TIRED); // Dùng TIRED cho vẻ buồn    roboEyes.setPosition(S); // Nhìn xuống
     roboEyes.setAutoblinker(ON, 4, 2); // Blink chậm
     roboEyes.setVFlicker(ON, 2); // Rung nhẹ
-    roboEyes.setEyeColor(TFT_BLUE);  // Mắt xanh dương trên nền cyan
   }
     void setLoveMode() {
     backgroundColor = TFT_MAGENTA;
@@ -332,11 +336,9 @@ private:
     roboEyes.setHeight(55, 55);
     roboEyes.setBorderradius(25, 25); // Tròn như trái tim
     roboEyes.setSpacebetween(25);
-    roboEyes.setMood(HAPPY);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(HAPPY);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 2, 1);
     roboEyes.setIdleMode(ON, 3, 2);
-    roboEyes.setEyeColor(TFT_PINK);  // Mắt hồng cho love mode
   }
     void setSurpriseMode() {
     backgroundColor = TFT_WHITE;
@@ -349,11 +351,9 @@ private:
     roboEyes.setHeight(80, 80);
     roboEyes.setBorderradius(40, 40);
     roboEyes.setSpacebetween(20);
-    roboEyes.setMood(DEFAULT);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(DEFAULT);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 1, 0); // Blink rất nhanh
     roboEyes.setCuriosity(ON); // Mắt thay đổi khi di chuyển
-    roboEyes.setEyeColor(TFT_BLACK);  // Mắt đen trên nền trắng
   }
     void setWinkMode() {
     backgroundColor = TFT_GREEN;
@@ -366,10 +366,8 @@ private:
     roboEyes.setHeight(50, 50);
     roboEyes.setBorderradius(12, 12);
     roboEyes.setSpacebetween(30);
-    roboEyes.setMood(HAPPY);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(HAPPY);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 1, 0); // Blink liên tục
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền xanh
   }
     void setConfusedMode() {
     backgroundColor = TFT_PURPLE;
@@ -382,11 +380,9 @@ private:
     roboEyes.setHeight(50, 50);
     roboEyes.setBorderradius(12, 12);
     roboEyes.setSpacebetween(35);
-    roboEyes.setMood(DEFAULT);
-    roboEyes.setPosition(DEFAULT);
+    roboEyes.setMood(DEFAULT);    roboEyes.setPosition(DEFAULT);
     roboEyes.setAutoblinker(ON, 2, 1);
     roboEyes.setHFlicker(ON, 5); // Rung mạnh ngang
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền tím
     
     // Chạy animation confused
     roboEyes.anim_confused();
@@ -402,11 +398,9 @@ private:
     roboEyes.setHeight(25, 25); // Mắt nửa nhắm
     roboEyes.setBorderradius(15, 15);
     roboEyes.setSpacebetween(30);
-    roboEyes.setMood(TIRED);
-    roboEyes.setPosition(S); // Nhìn xuống
+    roboEyes.setMood(TIRED);    roboEyes.setPosition(S); // Nhìn xuống
     roboEyes.setAutoblinker(ON, 5, 3); // Blink rất chậm
     roboEyes.setVFlicker(ON, 1); // Rung nhẹ
-    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền olive
   }
     void playTransitionAnimation() {
     // Animation chuyển đổi giữa các cảm xúc
