@@ -1,367 +1,703 @@
 //***********************************************************************************************
-//  ESP32 Emotional Pet with FluxGarage RoboEyes + TFT_eSPI
+//  ESP32 Emotional Pet - Sử dụng TFT_eSPI và FluxGarage RoboEyes
 //  
 //  Hardware: ESP32 S3 N16R8 PSRAM + TFT 2.4" 320x240 ILI9341
 //  
+//  Thư viện cần thiết:
+//  - TFT_eSPI (cấu hình trong User_Setup.h)
+//  - FluxGarage_RoboEyes: https://github.com/FluxGarage/RoboEyes
+//  
 //  Tính năng:
-//  - Tích hợp thư viện FluxGarage RoboEyes với TFT_eSPI
-//  - Animation mượt mà với auto-blink và idle mode
-//  - Nhiều trạng thái cảm xúc và hiệu ứng
-//  - Performance cao hơn với TFT_eSPI
+//  - Nhận lệnh từ Serial (laptop) để thay đổi biểu cảm
+//  - 8 trạng thái cảm xúc với animation đặc biệt
+//  - Sử dụng RoboEyes library cho animation mượt mà
+//  - Background và hiệu ứng thay đổi theo cảm xúc
 //  
 //  Lệnh Serial:
-//  :happy - Vui vẻ
-//  :angry - Tức giận  
-//  :tired - Mệt mỏi
-//  :normal - Bình thường
-//  :confused - Bối rối (animation)
-//  :laugh - Cười (animation)
-//  :blink - Chớp mắt
-//  :wink - Nháy mắt
-//  :look:N/NE/E/SE/S/SW/W/NW - Nhìn theo hướng
-//  :idle:1/0 - Bật/tắt idle mode
-//  :auto:1/0 - Bật/tắt auto blink
-//  :cyclops:1/0 - Chế độ một mắt
-//  :curious:1/0 - Chế độ tò mò
+//  :happy - Vui vẻ (mắt cười + nền vàng)
+//  :angry - Tức giận (mắt nhỏ + nền đỏ + lông mày)
+//  :sleep - Ngủ (mắt nhắm + nền tối)
+//  :sad - Buồn (mắt to + nền xanh + nước mắt)
+//  :love - Yêu thương (mắt trái tim + nền hồng + trái tim bay)
+//  :surprise - Ngạc nhiên (mắt rất to + nền trắng)
+//  :normal - Bình thường (mặc định)
+//  :wink - Nháy mắt (chớp mắt liên tục)
+//  :confused - Bối rối (mắt lắc qua lại)
+//  :tired - Mệt mỏi (mắt nửa nhắm + yawn animation)
 //
 //***********************************************************************************************
 
 #include <TFT_eSPI.h>
 #include <SPI.h>
 
-// TFT_eSPI instance
-TFT_eSPI tft = TFT_eSPI(320, 240); // Landscape mode 320x240
+// Khởi tạo display trước khi include RoboEyes
+TFT_eSPI tft = TFT_eSPI(320, 240); // Kích thước TFT 2.4" ILI9341
 
-// Display Adapter để FluxGarage RoboEyes hoạt động với TFT_eSPI
-// Case che bên trái 40px, bên phải 20px -> dịch chuyển mắt sang phải
+// Tạo adapter để RoboEyes hoạt động với TFT_eSPI  
 class DisplayAdapter {
-private:  const int16_t OFFSET_X = 10;       // Giảm offset để mắt nằm giữa màn hình
-  const int16_t PADDING_RIGHT = 40;  // Dành chỗ bên phải 20px
+private:
+  const int16_t OFFSET_X = 10;  // Padding bên trái 10px
   
-  // Kiểm tra xem có vượt quá vùng hiển thị không
-  bool isWithinBounds(int16_t x, int16_t w) {
-    return (x + OFFSET_X + w <= tft.width() - PADDING_RIGHT);
-  }
-  
-public:  void begin() {
-    // TFT_eSPI handles initialization
-  }
+public:
   void clearDisplay() {
-    // NUCLEAR OPTION - Xóa toàn bộ màn hình mỗi frame
-    // Đây là cách duy nhất để đảm bảo 100% không có trailing
-    extern uint16_t backgroundColor;
-    tft.fillScreen(backgroundColor);
+    tft.fillScreen(TFT_BLACK);
   }
   
   void display() {
-    // TFT_eSPI updates immediately, no buffering needed
-  }  void drawPixel(int16_t x, int16_t y, uint16_t color) {
-    extern uint16_t backgroundColor;
-    // ALWAYS clear pixel trước khi vẽ để tránh nhiễu
-    tft.drawPixel(x + OFFSET_X, y, backgroundColor);
-    if (isWithinBounds(x, 1)) {
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.drawPixel(x + OFFSET_X, y, tftColor);
-    }
-  }void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    // Giới hạn width nếu vượt quá padding phải
-    int16_t maxWidth = tft.width() - PADDING_RIGHT - (x + OFFSET_X);
-    if (maxWidth > 0) {
-      w = min(w, maxWidth);
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.fillRect(x + OFFSET_X, y, w, h, tftColor);
-    }
-  }  void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    // Giới hạn width nếu vượt quá padding phải
-    int16_t maxWidth = tft.width() - PADDING_RIGHT - (x + OFFSET_X);
-    if (maxWidth > 0) {
-      w = min(w, maxWidth);
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.drawRect(x + OFFSET_X, y, w, h, tftColor);
-    }
-  }  void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-    if (isWithinBounds(x - r, 2 * r)) {
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.fillCircle(x + OFFSET_X, y, r, tftColor);
-    }
+    // TFT_eSPI không cần buffer flush
   }
+  
+  void drawPixel(int16_t x, int16_t y, uint16_t color) {
+    tft.drawPixel(x + OFFSET_X, y, color);
+  }
+  
+  void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    tft.fillRect(x + OFFSET_X, y, w, h, color);
+  }
+  
+  void drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    tft.drawRect(x + OFFSET_X, y, w, h, color);
+  }
+  
+  void fillCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
+    tft.fillCircle(x + OFFSET_X, y, r, color);
+  }
+  
   void drawCircle(int16_t x, int16_t y, int16_t r, uint16_t color) {
-    if (isWithinBounds(x - r, 2 * r)) {
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.drawCircle(x + OFFSET_X, y, r, tftColor);
-    }
-  }  void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
-    // Tìm x tối đa của tam giác
-    int16_t maxX = max(max(x0, x1), x2);
-    if (maxX + OFFSET_X <= tft.width() - PADDING_RIGHT) {
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.fillTriangle(x0 + OFFSET_X, y0, x1 + OFFSET_X, y1, x2 + OFFSET_X, y2, tftColor);
-    }
-  }  void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    // Giới hạn width nếu vượt quá padding phải
-    int16_t maxWidth = tft.width() - PADDING_RIGHT - (x + OFFSET_X);
-    if (maxWidth > 0) {
-      w = min(w, maxWidth);
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.fillRoundRect(x + OFFSET_X, y, w, h, r, tftColor);
-    }
+    tft.drawCircle(x + OFFSET_X, y, r, color);
   }
-    void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
-    // Giới hạn width nếu vượt quá padding phải
-    int16_t maxWidth = tft.width() - PADDING_RIGHT - (x + OFFSET_X);
-    if (maxWidth > 0) {
-      w = min(w, maxWidth);
-      extern uint16_t backgroundColor;
-      uint16_t tftColor = (color == 1) ? TFT_CYAN : backgroundColor;
-      tft.drawRoundRect(x + OFFSET_X, y, w, h, r, tftColor);
-    }
+  
+  void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color) {
+    tft.fillTriangle(x0 + OFFSET_X, y0, x1 + OFFSET_X, y1, x2 + OFFSET_X, y2, color);
   }
-    // Trả về kích thước có tính padding để RoboEyes tính toán đúng
-  int16_t width() { return tft.width() - OFFSET_X - PADDING_RIGHT; }  // 320 - 10 - 20 = 290px
-  int16_t height() { return tft.height(); }  // 240px - kích thước đầy đủ
+  
+  void fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+    tft.fillRoundRect(x + OFFSET_X, y, w, h, r, color);
+  }
+  
+  void drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+    tft.drawRoundRect(x + OFFSET_X, y, w, h, r, color);
+  }
+  
+  int16_t width() { return tft.width() - OFFSET_X; }  // Trừ đi padding để RoboEyes tính toán đúng
+  int16_t height() { return tft.height(); }
 };
 
-// Create display adapter instance (renamed to avoid conflict with RoboEyes)
-DisplayAdapter displayAdapter;
+// Tạo global display object cho RoboEyes
+DisplayAdapter display;
 
-// Create global display reference for FluxGarage RoboEyes library
-DisplayAdapter& display = displayAdapter;
-
-// Include FluxGarage RoboEyes library AFTER display is defined
 #include <FluxGarage_RoboEyes.h>
 
-// FluxGarage RoboEyes instance với TFT_eSPI adapter
-roboEyes eyes;
+// Khởi tạo RoboEyes sau khi display adapter sẵn sàng
+roboEyes roboEyes;
 
-// Variables for background effects
-uint16_t backgroundColor = TFT_BLACK;
-String currentMood = "normal";
-unsigned long lastMoodChange = 0;
-unsigned long moodDuration = 5000; // 5 seconds
+// Enum cho các trạng thái cảm xúc - tránh xung đột với FluxGarage RoboEyes #define
+enum EmotionState {
+  EMO_NORMAL,
+  EMO_HAPPY,
+  EMO_ANGRY,
+  EMO_SLEEP,
+  EMO_SAD,
+  EMO_LOVE,
+  EMO_SURPRISE,
+  EMO_WINK,
+  EMO_CONFUSED,
+  EMO_TIRED
+};
 
-// Variables for eye movement tracking
-static unsigned long lastEyeUpdate = 0;
-static bool forceEyeClear = false;
+// Class quản lý cảm xúc và hiệu ứng
+class EmotionalPet {
+private:
+  EmotionState currentEmotion;
+  EmotionState previousEmotion;
+  
+  // Timing cho các hiệu ứng
+  unsigned long lastEffectUpdate;
+  unsigned long lastBackgroundUpdate;
+  unsigned long emotionStartTime;
+  int effectFrame;
+  
+  // Background colors
+  uint16_t backgroundColor;
+  uint16_t primaryColor;
+  uint16_t secondaryColor;
+  
+  // Animation states
+  bool isPlayingAnimation;
+  int animationStep;
+  unsigned long lastAnimationUpdate;
 
-// Force clear eye area (used when eyes move to prevent trailing)
-void forceClearEyeArea() {
-  // NUCLEAR CLEAR - Xóa toàn bộ màn hình
-  tft.fillScreen(backgroundColor);
-}
+public:  EmotionalPet() {
+    currentEmotion = EMO_NORMAL;
+    previousEmotion = EMO_NORMAL;
+    lastEffectUpdate = 0;
+    lastBackgroundUpdate = 0;
+    emotionStartTime = 0;
+    effectFrame = 0;
+    isPlayingAnimation = false;
+    animationStep = 0;
+    lastAnimationUpdate = 0;
+  }
+  
+  void begin() {    // Khởi tạo TFT
+    tft.init();
+    tft.setRotation(2); // Landscape
+    tft.fillScreen(TFT_CYAN); // Sáng hơn thay vì NAVY
+      // Khởi tạo RoboEyes
+    roboEyes.begin(320, 240, 60); // 60 FPS max
+    
+    // Đặt màu mắt sáng hơn
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt màu trắng thay vì xanh tối
+    
+    // Cấu hình mặc định
+    setNormalMode();
+    
+    Serial.println("ESP32 Emotional Pet initialized!");
+  }
+  
+  void setEmotion(EmotionState newEmotion) {
+    if (currentEmotion != newEmotion) {
+      previousEmotion = currentEmotion;
+      currentEmotion = newEmotion;
+      emotionStartTime = millis();
+      effectFrame = 0;
+      isPlayingAnimation = true;
+      animationStep = 0;
+      
+      // Áp dụng cấu hình cho cảm xúc mới
+      applyEmotionSettings();
+      
+      // Chạy animation chuyển đổi
+      playTransitionAnimation();
+    }
+  }
+  
+  void update() {
+    // Update RoboEyes
+    roboEyes.update();
+    
+    // Update hiệu ứng background
+    updateBackgroundEffects();
+    
+    // Update animation đặc biệt
+    updateSpecialAnimations();
+    
+    // Vẽ các hiệu ứng overlay
+    drawEmotionOverlay();
+  }
+
+private:
+  void applyEmotionSettings() {
+    // Reset về cấu hình mặc định trước
+    roboEyes.setAutoblinker(OFF);
+    roboEyes.setIdleMode(OFF);
+    roboEyes.setHFlicker(OFF);
+    roboEyes.setVFlicker(OFF);
+    roboEyes.setCyclops(OFF);
+      switch(currentEmotion) {
+      case EMO_NORMAL:
+        setNormalMode();
+        break;
+        
+      case EMO_HAPPY:
+        setHappyMode();
+        break;
+        
+      case EMO_ANGRY:
+        setAngryMode();
+        break;
+        
+      case EMO_SLEEP:
+        setSleepMode();
+        break;
+        
+      case EMO_SAD:
+        setSadMode();
+        break;
+        
+      case EMO_LOVE:
+        setLoveMode();
+        break;
+        
+      case EMO_SURPRISE:
+        setSurpriseMode();
+        break;
+        
+      case EMO_WINK:
+        setWinkMode();
+        break;
+        
+      case EMO_CONFUSED:
+        setConfusedMode();
+        break;
+        
+      case EMO_TIRED:
+        setTiredMode();
+        break;
+    }
+  }
+  void setNormalMode() {
+    backgroundColor = TFT_CYAN;      // Sáng hơn thay vì NAVY
+    primaryColor = TFT_BLACK;
+    secondaryColor = TFT_CYAN;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(50, 50);
+    roboEyes.setHeight(50, 50);
+    roboEyes.setBorderradius(12, 12);
+    roboEyes.setSpacebetween(30);
+    roboEyes.setMood(DEFAULT);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 3, 2);
+    roboEyes.setIdleMode(OFF, 2, 2);
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng sáng
+  }
+    void setHappyMode() {
+    backgroundColor = TFT_YELLOW;
+    primaryColor = TFT_BLACK;
+    secondaryColor = TFT_ORANGE;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(60, 60);
+    roboEyes.setHeight(35, 35); // Mắt cười
+    roboEyes.setBorderradius(20, 20);
+    roboEyes.setSpacebetween(25);
+    roboEyes.setMood(HAPPY);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 1, 1); // Blink nhanh hơn
+    roboEyes.setIdleMode(ON, 1, 1);
+    roboEyes.setEyeColor(TFT_BLACK);  // Mắt đen trên nền vàng
+  }
+    void setAngryMode() {
+    backgroundColor = TFT_RED;
+    primaryColor = TFT_WHITE;
+    secondaryColor = TFT_MAROON;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(45, 45);
+    roboEyes.setHeight(30, 30); // Mắt nhỏ giận dữ
+    roboEyes.setBorderradius(5, 5);
+    roboEyes.setSpacebetween(40);
+    roboEyes.setMood(ANGRY);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 1, 0); // Blink nhanh đều
+    roboEyes.setHFlicker(ON, 3); // Rung ngang
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền đỏ
+  }
+  void setSleepMode() {
+    backgroundColor = TFT_DARKGREY;  // Sáng hơn thay vì BLACK
+    primaryColor = TFT_WHITE;        // Sáng hơn
+    secondaryColor = TFT_LIGHTGREY;  // Sáng hơn
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(55, 55);
+    roboEyes.setHeight(8, 8); // Mắt nhắm
+    roboEyes.setBorderradius(25, 25);
+    roboEyes.setSpacebetween(30);
+    roboEyes.setMood(TIRED);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(OFF); // Không blink khi ngủ
+    roboEyes.setIdleMode(OFF);
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng sáng
+  }
+  void setSadMode() {
+    backgroundColor = TFT_CYAN;       // Giữ cyan sáng
+    primaryColor = TFT_BLUE;
+    secondaryColor = TFT_NAVY;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(45, 45);
+    roboEyes.setHeight(70, 70); // Mắt to buồn
+    roboEyes.setBorderradius(15, 15);
+    roboEyes.setSpacebetween(35);
+    roboEyes.setMood(TIRED); // Dùng TIRED cho vẻ buồn
+    roboEyes.setPosition(S); // Nhìn xuống
+    roboEyes.setAutoblinker(ON, 4, 2); // Blink chậm
+    roboEyes.setVFlicker(ON, 2); // Rung nhẹ
+    roboEyes.setEyeColor(TFT_BLUE);  // Mắt xanh dương trên nền cyan
+  }
+    void setLoveMode() {
+    backgroundColor = TFT_MAGENTA;
+    primaryColor = TFT_WHITE;
+    secondaryColor = TFT_PINK;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(55, 55);
+    roboEyes.setHeight(55, 55);
+    roboEyes.setBorderradius(25, 25); // Tròn như trái tim
+    roboEyes.setSpacebetween(25);
+    roboEyes.setMood(HAPPY);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 2, 1);
+    roboEyes.setIdleMode(ON, 3, 2);
+    roboEyes.setEyeColor(TFT_PINK);  // Mắt hồng cho love mode
+  }
+    void setSurpriseMode() {
+    backgroundColor = TFT_WHITE;
+    primaryColor = TFT_BLACK;
+    secondaryColor = TFT_LIGHTGREY;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(80, 80); // Mắt rất to
+    roboEyes.setHeight(80, 80);
+    roboEyes.setBorderradius(40, 40);
+    roboEyes.setSpacebetween(20);
+    roboEyes.setMood(DEFAULT);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 1, 0); // Blink rất nhanh
+    roboEyes.setCuriosity(ON); // Mắt thay đổi khi di chuyển
+    roboEyes.setEyeColor(TFT_BLACK);  // Mắt đen trên nền trắng
+  }
+    void setWinkMode() {
+    backgroundColor = TFT_GREEN;
+    primaryColor = TFT_WHITE;
+    secondaryColor = TFT_DARKGREEN;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(50, 50);
+    roboEyes.setHeight(50, 50);
+    roboEyes.setBorderradius(12, 12);
+    roboEyes.setSpacebetween(30);
+    roboEyes.setMood(HAPPY);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 1, 0); // Blink liên tục
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền xanh
+  }
+    void setConfusedMode() {
+    backgroundColor = TFT_PURPLE;
+    primaryColor = TFT_WHITE;
+    secondaryColor = TFT_VIOLET;
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(50, 50);
+    roboEyes.setHeight(50, 50);
+    roboEyes.setBorderradius(12, 12);
+    roboEyes.setSpacebetween(35);
+    roboEyes.setMood(DEFAULT);
+    roboEyes.setPosition(DEFAULT);
+    roboEyes.setAutoblinker(ON, 2, 1);
+    roboEyes.setHFlicker(ON, 5); // Rung mạnh ngang
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền tím
+    
+    // Chạy animation confused
+    roboEyes.anim_confused();
+  }
+  void setTiredMode() {
+    backgroundColor = TFT_OLIVE;     // Sáng hơn thay vì DARKGREY
+    primaryColor = TFT_WHITE;        // Sáng hơn
+    secondaryColor = TFT_YELLOW;     // Sáng hơn
+    
+    tft.fillScreen(backgroundColor);
+    
+    roboEyes.setWidth(50, 50);
+    roboEyes.setHeight(25, 25); // Mắt nửa nhắm
+    roboEyes.setBorderradius(15, 15);
+    roboEyes.setSpacebetween(30);
+    roboEyes.setMood(TIRED);
+    roboEyes.setPosition(S); // Nhìn xuống
+    roboEyes.setAutoblinker(ON, 5, 3); // Blink rất chậm
+    roboEyes.setVFlicker(ON, 1); // Rung nhẹ
+    roboEyes.setEyeColor(TFT_WHITE);  // Mắt trắng trên nền olive
+  }
+    void playTransitionAnimation() {
+    // Animation chuyển đổi giữa các cảm xúc
+    switch(currentEmotion) {
+      case EMO_CONFUSED:
+        roboEyes.anim_confused();
+        break;
+      case EMO_HAPPY:
+        roboEyes.anim_laugh();
+        break;
+    }
+  }
+  
+  void updateBackgroundEffects() {
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastBackgroundUpdate > 100) { // Update mỗi 100ms
+      lastBackgroundUpdate = currentTime;
+        switch(currentEmotion) {
+        case EMO_LOVE:
+          drawFloatingHearts();
+          break;
+          
+        case EMO_SURPRISE:
+          drawShockLines();
+          break;
+          
+        case EMO_ANGRY:
+          drawAngryEffects();
+          break;
+      }
+    }
+  }
+  
+  void updateSpecialAnimations() {
+    unsigned long currentTime = millis();
+    
+    if (currentTime - lastAnimationUpdate > 500) { // Update mỗi 500ms
+      lastAnimationUpdate = currentTime;
+        if (currentEmotion == EMO_WINK) {
+        // Tạo hiệu ứng wink đặc biệt
+        animationStep = (animationStep + 1) % 4;
+      }
+      
+      if (currentEmotion == EMO_CONFUSED && animationStep < 6) {
+        // Chạy animation confused liên tục
+        roboEyes.anim_confused();
+        animationStep++;
+      }
+    }
+  }
+    void drawEmotionOverlay() {
+    switch(currentEmotion) {
+      case EMO_SAD:
+        drawTears();
+        break;
+        
+      case EMO_ANGRY:
+        drawEyebrows();
+        break;
+        
+      case EMO_SLEEP:
+        drawSleepZzz();
+        break;
+    }
+  }
+    void drawFloatingHearts() {
+    // Vẽ trái tim bay lơ lửng (điều chỉnh vị trí với padding)
+    static int heartY1 = 240, heartY2 = 240, heartY3 = 240;
+    
+    // Xóa trái tim cũ
+    tft.fillRect(60, heartY1-5, 20, 20, backgroundColor);  // +10px padding
+    tft.fillRect(160, heartY2-5, 15, 15, backgroundColor); // +10px padding
+    tft.fillRect(260, heartY3-5, 18, 18, backgroundColor); // +10px padding
+    
+    // Di chuyển lên
+    heartY1 -= 2;
+    heartY2 -= 3;
+    heartY3 -= 1;
+    
+    // Reset khi ra khỏi màn hình
+    if (heartY1 < -20) heartY1 = 260;
+    if (heartY2 < -20) heartY2 = 270;
+    if (heartY3 < -20) heartY3 = 250;
+    
+    // Vẽ trái tim mới (điều chỉnh vị trí với padding)
+    drawHeart(60, heartY1, 8, TFT_RED);   // +10px padding
+    drawHeart(160, heartY2, 6, TFT_PINK); // +10px padding
+    drawHeart(270, heartY3, 7, TFT_RED);  // +10px padding
+  }
+  
+  void drawHeart(int x, int y, int size, uint16_t color) {
+    // Vẽ trái tim đơn giản
+    tft.fillCircle(x - size/2, y, size/2, color);
+    tft.fillCircle(x + size/2, y, size/2, color);
+    tft.fillTriangle(x - size, y + size/4, x + size, y + size/4, x, y + size, color);
+  }
+    void drawShockLines() {
+    // Vẽ các đường shock xung quanh (điều chỉnh với padding)
+    static int shockFrame = 0;
+    shockFrame = (shockFrame + 1) % 8;
+    
+    if (shockFrame < 4) {
+      // Vẽ các đường shock
+      tft.drawLine(20, 50 + shockFrame * 5, 40, 70 + shockFrame * 5, TFT_YELLOW);     // +10px padding
+      tft.drawLine(280, 60 + shockFrame * 3, 300, 80 + shockFrame * 3, TFT_YELLOW);   // -10px từ right
+      tft.drawLine(25, 180 - shockFrame * 4, 45, 200 - shockFrame * 4, TFT_YELLOW);   // +10px padding
+      tft.drawLine(275, 170 - shockFrame * 2, 295, 190 - shockFrame * 2, TFT_YELLOW); // -10px từ right
+    } else {
+      // Xóa các đường shock
+      tft.fillRect(20, 50, 25, 100, backgroundColor);
+      tft.fillRect(275, 60, 25, 100, backgroundColor);
+      tft.fillRect(25, 140, 25, 80, backgroundColor);
+      tft.fillRect(275, 150, 25, 60, backgroundColor);
+    }
+  }
+    void drawAngryEffects() {
+    // Vẽ các dấu hiệu tức giận (điều chỉnh với padding)
+    static bool showAngrySymbols = true;
+    showAngrySymbols = !showAngrySymbols;
+    
+    if (showAngrySymbols) {
+      // Vẽ dấu # tức giận
+      tft.setTextColor(TFT_WHITE, backgroundColor);
+      tft.setTextSize(3);
+      tft.drawString("#", 40, 30);   // +10px padding
+      tft.drawString("*", 280, 40);  // -10px từ right
+      tft.drawString("!", 290, 180); // -10px từ right
+    } else {
+      // Xóa các ký hiệu
+      tft.fillRect(40, 30, 30, 30, backgroundColor);
+      tft.fillRect(280, 40, 30, 30, backgroundColor);
+      tft.fillRect(290, 180, 30, 30, backgroundColor);
+    }
+  }
+  
+  void drawTears() {
+    // Vẽ nước mắt
+    static int tearY1 = 140, tearY2 = 145;
+    
+    // Xóa nước mắt cũ
+    tft.fillRect(80, tearY1-5, 8, 20, backgroundColor);
+    tft.fillRect(200, tearY2-5, 8, 20, backgroundColor);
+    
+    // Di chuyển xuống
+    tearY1 += 3;
+    tearY2 += 2;
+    
+    // Reset khi chạm đáy
+    if (tearY1 > 220) tearY1 = 140;
+    if (tearY2 > 220) tearY2 = 145;
+      // Vẽ nước mắt mới
+    tft.fillCircle(85, tearY1, 3, TFT_BLUE);
+    tft.fillRect(83, tearY1, 4, 8, TFT_BLUE);
+      tft.fillCircle(205, tearY2, 4, TFT_CYAN);
+    tft.fillRect(202, tearY2, 6, 10, TFT_CYAN);
+  }
+    void drawEyebrows() {
+    // Vẽ lông mày giận dữ (điều chỉnh với padding)
+    tft.drawLine(80, 70, 120, 85, TFT_BLACK); // Lông mày trái +10px
+    tft.drawLine(81, 71, 121, 86, TFT_BLACK);
+    
+    tft.drawLine(200, 85, 240, 70, TFT_BLACK); // Lông mày phải -10px
+    tft.drawLine(201, 86, 241, 71, TFT_BLACK);
+  }
+  
+  void drawSleepZzz() {
+    // Vẽ Zzz ngủ
+    static int zzzY1 = 80, zzzY2 = 60, zzzY3 = 40;
+    static unsigned long lastZzzUpdate = 0;
+    
+    if (millis() - lastZzzUpdate > 150) {
+      lastZzzUpdate = millis();
+      
+      // Xóa Zzz cũ
+      tft.fillRect(250, zzzY1-5, 30, 20, backgroundColor);
+      tft.fillRect(270, zzzY2-5, 25, 15, backgroundColor);
+      tft.fillRect(290, zzzY3-5, 20, 12, backgroundColor);
+      
+      // Di chuyển lên
+      zzzY1 -= 1;
+      zzzY2 -= 1;
+      zzzY3 -= 1;
+      
+      // Reset
+      if (zzzY1 < 20) zzzY1 = 100;
+      if (zzzY2 < 20) zzzY2 = 120;
+      if (zzzY3 < 20) zzzY3 = 140;
+      
+      // Vẽ Zzz mới
+      tft.setTextColor(TFT_WHITE, backgroundColor);
+      tft.setTextSize(2);
+      tft.drawString("Z", 250, zzzY1);
+      tft.setTextSize(1);
+      tft.drawString("Z", 270, zzzY2);
+      tft.drawString("z", 290, zzzY3);
+    }
+  }
+};
+
+// Khởi tạo đối tượng
+EmotionalPet pet;
+String serialCommand = "";
 
 void setup() {
   Serial.begin(115200);
-    // Initialize TFT
-  tft.init();
-  tft.setRotation(2); // Landscape 320x240
-  tft.fillScreen(TFT_BLACK);  // Initialize RoboEyes với kích thước đầy đủ màn hình
-  eyes.begin(320, 240, 15);  // Sử dụng full screen, OFFSET sẽ center mắt// Configure RoboEyes default settings cho 15 FPS
-  eyes.setAutoblinker(true, 6, 10); // Auto blink every 6-10 seconds (chậm hơn cho 15 FPS)
-  eyes.setIdleMode(false);          // BẬT idle mode để có chuyển động tự nhiên
-  eyes.setCuriosity(true);         // BẬT curiosity mode để tự động nhìn xung quanh
-    // Set larger eyes for TFT display
-  eyes.setWidth(50, 50);           // Bigger eyes
-  eyes.setHeight(50, 50);
-  eyes.setBorderradius(12, 12);    // More rounded
-  eyes.setSpacebetween(30);        // More space between eyes
-    // CỐ ĐỊNH vị trí mắt ở trung tâm ban đầu
-  eyes.setPosition(DEFAULT);       // Set to center position
+  delay(1000);
   
-  Serial.println("=== ESP32 Emotional Pet with FluxGarage RoboEyes ===");
-  Serial.println("TFT_eSPI + FluxGarage RoboEyes Integration");
-  Serial.println("");
+  // Khởi tạo pet
+  pet.begin();
+  
+  Serial.println("=== ESP32 Emotional Pet với FluxGarage RoboEyes ===");
   Serial.println("Commands:");
-  Serial.println(":happy - Happy mood");
-  Serial.println(":angry - Angry mood");
-  Serial.println(":tired - Tired mood");
-  Serial.println(":normal - Normal mood");
-  Serial.println("");
-  Serial.println("Animations:");
-  Serial.println(":confused - Confused animation");
-  Serial.println(":laugh - Laugh animation");
-  Serial.println(":blink - Manual blink");
-  Serial.println(":wink - Wink (left eye)");
-  Serial.println("");
-  Serial.println("Look directions:");
-  Serial.println(":look:N/NE/E/SE/S/SW/W/NW/CENTER");
-  Serial.println("");
-  Serial.println("Settings:");
-  Serial.println(":idle:1/0 - Toggle idle mode");
-  Serial.println(":auto:1/0 - Toggle auto blink");
-  Serial.println(":cyclops:1/0 - Toggle cyclops mode");
-  Serial.println(":curious:1/0 - Toggle curiosity mode");
-  Serial.println("=========================================================");
+  Serial.println(":normal   - Normal mode");
+  Serial.println(":happy    - Happy mode (vui vẻ)");
+  Serial.println(":angry    - Angry mode (tức giận)");
+  Serial.println(":sleep    - Sleep mode (ngủ)");
+  Serial.println(":sad      - Sad mode (buồn)");
+  Serial.println(":love     - Love mode (yêu thương)");
+  Serial.println(":surprise - Surprise mode (ngạc nhiên)");
+  Serial.println(":wink     - Wink mode (nháy mắt)");
+  Serial.println(":confused - Confused mode (bối rối)");
+  Serial.println(":tired    - Tired mode (mệt mỏi)");
+  Serial.println("================================================");
 }
 
 void loop() {
-  // Handle serial commands
+  // Đọc lệnh từ Serial
   if (Serial.available()) {
-    String command = Serial.readStringUntil('\n');
-    command.trim();
-    Serial.println("DEBUG: Raw command = '" + command + "'");
-    handleCommand(command);
-  }
-  
-  // REDUCED clearing strategy - chỉ clear khi cần thiết
-  static unsigned long lastClear = 0;
-  if (millis() - lastClear > 50) { // Clear mỗi 50ms thay vì mỗi frame
-    tft.fillScreen(backgroundColor);
-    lastClear = millis();
-  }
-  
-  // Update RoboEyes (this handles all animations and drawing)
-  eyes.update();
-  
-  delay(33); // 30 FPS
-}
-
-void handleCommand(String command) {
-  command.toLowerCase();
-  Serial.println("Received: " + command);
-  Serial.println("DEBUG: Command length = " + String(command.length()));
-  
-  // Mood commands
-  if (command == ":happy") {
-    Serial.println("DEBUG: Processing :happy command");
-    eyes.setMood(HAPPY);
-    backgroundColor = TFT_YELLOW;
-    currentMood = "happy";
-    Serial.println("Mood: Happy 😊");
-    
-  } else if (command == ":angry") {
-    Serial.println("DEBUG: Processing :angry command");
-    eyes.setMood(ANGRY);
-    backgroundColor = TFT_RED;
-    currentMood = "angry";
-    Serial.println("Mood: Angry 😠");
-    
-  } else if (command == ":tired") {
-    Serial.println("DEBUG: Processing :tired command");
-    eyes.setMood(TIRED);
-    backgroundColor = TFT_NAVY;
-    currentMood = "tired";    Serial.println("Mood: Tired 😴");
-    
-  } else if (command == ":normal") {
-    eyes.setMood(DEFAULT);
-    backgroundColor = TFT_BLACK;
-    currentMood = "normal";
-    Serial.println("Mood: Normal 😐");
-    
-  // Animation commands
-  } else if (command == ":confused") {
-    tft.fillScreen(backgroundColor); // Nuclear clear BEFORE animation
-    eyes.anim_confused();
-    Serial.println("Animation: Confused 😵");
-    
-  } else if (command == ":laugh") {
-    tft.fillScreen(backgroundColor); // Nuclear clear BEFORE animation
-    eyes.anim_laugh();
-    Serial.println("Animation: Laugh 😂");
-    
-  } else if (command == ":blink") {
-    tft.fillScreen(backgroundColor); // Nuclear clear BEFORE animation
-    eyes.blink();
-    Serial.println("Animation: Blink 😉");
-    
-  } else if (command == ":wink") {
-    tft.fillScreen(backgroundColor); // Nuclear clear BEFORE animation    eyes.blink(true, false); // Only left eye
-    Serial.println("Animation: Wink 😉");
-    
-  // Look direction commands
-  } else if (command.startsWith(":look:")) {String direction = command.substring(6);
-    direction.toUpperCase();    
-    tft.fillScreen(backgroundColor); // Nuclear clear BEFORE eye movement
-    
-    if (direction == "N") {
-      eyes.setPosition(N);
-      Serial.println("Looking: North ⬆️");
-    } else if (direction == "NE") {
-      eyes.setPosition(NE);
-      Serial.println("Looking: North-East ↗️");
-    } else if (direction == "E") {
-      eyes.setPosition(E);
-      Serial.println("Looking: East ➡️");
-    } else if (direction == "SE") {
-      eyes.setPosition(SE);
-      Serial.println("Looking: South-East ↘️");
-    } else if (direction == "S") {
-      eyes.setPosition(S);
-      Serial.println("Looking: South ⬇️");
-    } else if (direction == "SW") {
-      eyes.setPosition(SW);
-      Serial.println("Looking: South-West ↙️");
-    } else if (direction == "W") {
-      eyes.setPosition(W);
-      Serial.println("Looking: West ⬅️");
-    } else if (direction == "NW") {
-      eyes.setPosition(NW);
-      Serial.println("Looking: North-West ↖️");
-    } else if (direction == "CENTER") {
-      eyes.setPosition(DEFAULT);
-      Serial.println("Looking: Center 👀");    } else {
-      Serial.println("Invalid direction. Use: N/NE/E/SE/S/SW/W/NW/CENTER");
+    char c = Serial.read();
+    if (c == '\n' || c == '\r') {
+      if (serialCommand.length() > 0) {
+        processCommand(serialCommand);
+        serialCommand = "";
+      }
+    } else {
+      serialCommand += c;
     }
-    
-  // Settings commands
-  } else if (command.startsWith(":idle:")) {
-    int value = command.substring(6).toInt();
-    eyes.setIdleMode(value == 1);
-    Serial.println("Idle mode: " + String(value == 1 ? "ON (mắt sẽ di chuyển)" : "OFF (mắt cố định)"));
-    
-  } else if (command.startsWith(":auto:")) {
-    int value = command.substring(6).toInt();
-    eyes.setAutoblinker(value == 1);
-    Serial.println("Auto blink: " + String(value == 1 ? "ON" : "OFF"));
-    
-  } else if (command.startsWith(":cyclops:")) {
-    int value = command.substring(9).toInt();
-    eyes.setCyclops(value == 1);
-    Serial.println("Cyclops mode: " + String(value == 1 ? "ON" : "OFF"));
-    
-  } else if (command.startsWith(":curious:")) {
-    int value = command.substring(9).toInt();
-    eyes.setCuriosity(value == 1);
-    Serial.println("Curiosity mode: " + String(value == 1 ? "ON (tự động nhìn xung quanh)" : "OFF (không tự động nhìn)"));
-    
-  } else {
-    Serial.println("❌ Unknown command!");
-    Serial.println("📋 Available commands:");
-    Serial.println("   Moods: :happy, :angry, :tired, :normal");
-    Serial.println("   Animations: :confused, :laugh, :blink, :wink");
-    Serial.println("   Look: :look:N/NE/E/SE/S/SW/W/NW/CENTER");
-    Serial.println("   Settings: :idle:1/0, :auto:1/0, :cyclops:1/0, :curious:1/0");
   }
   
-  lastMoodChange = millis();
+  // Update pet
+  pet.update();
 }
 
-void updateBackground() {
-  // Simplified background - CHỈ fill các góc để tránh conflict với eye area
-  static uint16_t currentBgColor = TFT_BLACK;
-  static unsigned long lastBgUpdate = 0;
+void processCommand(String command) {
+  command.trim();
+  command.toLowerCase();
   
-  // Chỉ update background khi mood thay đổi
-  if (millis() - lastBgUpdate > 200 && currentBgColor != backgroundColor) { 
-    currentBgColor = backgroundColor;
-    
-    // CHỈ fill 4 góc màn hình để tránh conflict với eye area
-    // Top corners
-    tft.fillRect(0, 0, 320, 25, currentBgColor);
-    // Bottom corners 
-    tft.fillRect(0, 215, 320, 25, currentBgColor);
-    // Left side
-    tft.fillRect(0, 25, 15, 190, currentBgColor);
-    // Right side
-    tft.fillRect(305, 25, 15, 190, currentBgColor);
-    
-    lastBgUpdate = millis();
+  Serial.println("Received: " + command);
+    if (command == ":normal") {
+    pet.setEmotion(EMO_NORMAL);
+    Serial.println("→ Pet: Normal mode activated");
   }
-  
-  // LOẠI BỎ mood effects để tránh xung đột
+  else if (command == ":happy") {
+    pet.setEmotion(EMO_HAPPY);
+    Serial.println("→ Pet: Happy mode activated! (◕‿◕)");
+  }
+  else if (command == ":angry") {
+    pet.setEmotion(EMO_ANGRY);
+    Serial.println("→ Pet: Angry mode activated! (ಠ_ಠ)");
+  }
+  else if (command == ":sleep") {
+    pet.setEmotion(EMO_SLEEP);
+    Serial.println("→ Pet: Sleep mode activated... (˘▾˘)~♪");
+  }
+  else if (command == ":sad") {
+    pet.setEmotion(EMO_SAD);
+    Serial.println("→ Pet: Sad mode activated... (╥﹏╥)");
+  }
+  else if (command == ":love") {
+    pet.setEmotion(EMO_LOVE);
+    Serial.println("→ Pet: Love mode activated! (♥‿♥)");
+  }
+  else if (command == ":surprise") {
+    pet.setEmotion(EMO_SURPRISE);
+    Serial.println("→ Pet: Surprise mode activated! (◉_◉)");
+  }
+  else if (command == ":wink") {
+    pet.setEmotion(EMO_WINK);
+    Serial.println("→ Pet: Wink mode activated! (◕‿-)");
+  }
+  else if (command == ":confused") {
+    pet.setEmotion(EMO_CONFUSED);
+    Serial.println("→ Pet: Confused mode activated... (・・?)");
+  }
+  else if (command == ":tired") {
+    pet.setEmotion(EMO_TIRED);
+    Serial.println("→ Pet: Tired mode activated... (－_－) zzZ");
+  }
+  else {
+    Serial.println("→ Unknown command: " + command);
+    Serial.println("   Type one of: :normal, :happy, :angry, :sleep, :sad, :love, :surprise, :wink, :confused, :tired");
+  }
 }
